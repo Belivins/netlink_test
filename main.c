@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <signal.h>
 #include <netlink/socket.h>
-
 #include <netlink/cache.h>
 #include <netlink/netlink.h>
 #include <netlink/route/link.h>
@@ -40,36 +39,34 @@ int main()
     struct nl_cache *lc, *nc, *ac, *rc;
     struct nl_sock *sock;
     dp.dp_fd = stdout;
-	
+
 	signal(SIGINT, sigint);
     sock = nl_socket_alloc();
 
-    // int err = nl_cache_mngr_alloc(sock, )
-
 	int err = nl_cache_mngr_alloc(sock, NETLINK_ROUTE, NL_AUTO_PROVIDE, &mngr);
 	if (err < 0)
-		printf("Unable to allocate cache manager: %s", nl_geterror(err)); 
+		printf("Unable to allocate cache manager: %s\n", nl_geterror(err));
 
     if ((err = nl_cache_mngr_add(mngr, "route/link", &change_cb, NULL, &lc)) < 0)
-		printf("Unable to add cache route/link: %s",
+		printf("Unable to add cache route/link: %s\n",
 		      nl_geterror(err));
 
 	if ((err = nl_cache_mngr_add(mngr, "route/neigh", &change_cb, NULL, &nc)) < 0)
-		printf("Unable to add cache route/neigh: %s",
+		printf("Unable to add cache route/neigh: %s\n",
 		      nl_geterror(err));
 
 	if ((err = nl_cache_mngr_add(mngr, "route/addr", &change_cb, NULL, &ac)) < 0)
-		printf("Unable to add cache route/addr: %s",
+		printf("Unable to add cache route/addr: %s\n",
 		      nl_geterror(err));
 
 	if ((err = nl_cache_mngr_add(mngr, "route/route", &change_cb, NULL, &rc)) < 0)
-		printf("Unable to add cache route/route: %s",
+		printf("Unable to add cache route/route: %s\n",
 		      nl_geterror(err));
 
 	while (!quit) {
 		int err = nl_cache_mngr_poll(mngr, 1000);
 		if (err < 0 && err != -NLE_INTR)
-			printf("Polling failed: %s", nl_geterror(err));
+			printf("Polling failed: %s\n", nl_geterror(err));
 
 		// nl_cache_mngr_info(mngr, &dp);
 	}

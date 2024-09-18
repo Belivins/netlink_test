@@ -1,7 +1,7 @@
 TARGET = main
 LIBS = -lnl-3 -lnl-route-3 -lnl-genl-3
-CC = gcc
-CFLAGS = -g -Wall -Wl,--no-as-needed -I /usr/include/libnl3
+CC = gcc -Wl,--no-as-needed
+CFLAGS = -g -Wall -I /usr/include/libnl3
 
 .PHONY: clean all default
 
