@@ -20,16 +20,31 @@ static void sigint(int arg)
 	quit = 1;
 }
 
-static void change_cb(struct nl_cache *cache, struct nl_object *obj,
+static void link_cb(struct nl_cache *cache, struct nl_object *obj,
 		      int action, void *data)
 {
-	if (action == NL_ACT_NEW)
-		printf("NEW ");
-	else if (action == NL_ACT_DEL)
-		printf("DEL ");
-	else if (action == NL_ACT_CHANGE)
-		printf("CHANGE ");
+  printf("%s\n", __func__);
+	nl_object_dump(obj, &dp);
+}
 
+static void neigh_cb(struct nl_cache *cache, struct nl_object *obj,
+		      int action, void *data)
+{
+  printf("%s\n", __func__);
+	nl_object_dump(obj, &dp);
+}
+
+static void addr_cb(struct nl_cache *cache, struct nl_object *obj,
+		      int action, void *data)
+{
+  printf("%s\n", __func__);
+	nl_object_dump(obj, &dp);
+}
+
+static void route_cb(struct nl_cache *cache, struct nl_object *obj,
+		      int action, void *data)
+{
+  printf("%s\n", __func__);
 	nl_object_dump(obj, &dp);
 }
 
@@ -47,19 +62,19 @@ int main()
 	if (err < 0)
 		printf("Unable to allocate cache manager: %s\n", nl_geterror(err));
 
-    if ((err = nl_cache_mngr_add(mngr, "route/link", &change_cb, NULL, &lc)) < 0)
+    if ((err = nl_cache_mngr_add(mngr, "route/link", &link_cb, NULL, &lc)) < 0)
 		printf("Unable to add cache route/link: %s\n",
 		      nl_geterror(err));
 
-	if ((err = nl_cache_mngr_add(mngr, "route/neigh", &change_cb, NULL, &nc)) < 0)
+	if ((err = nl_cache_mngr_add(mngr, "route/neigh", &neigh_cb, NULL, &nc)) < 0)
 		printf("Unable to add cache route/neigh: %s\n",
 		      nl_geterror(err));
 
-	if ((err = nl_cache_mngr_add(mngr, "route/addr", &change_cb, NULL, &ac)) < 0)
+	if ((err = nl_cache_mngr_add(mngr, "route/addr", &addr_cb, NULL, &ac)) < 0)
 		printf("Unable to add cache route/addr: %s\n",
 		      nl_geterror(err));
 
-	if ((err = nl_cache_mngr_add(mngr, "route/route", &change_cb, NULL, &rc)) < 0)
+	if ((err = nl_cache_mngr_add(mngr, "route/route", &route_cb, NULL, &rc)) < 0)
 		printf("Unable to add cache route/route: %s\n",
 		      nl_geterror(err));
 
