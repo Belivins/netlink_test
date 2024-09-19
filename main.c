@@ -4,6 +4,7 @@
 #include <netlink/cache.h>
 #include <netlink/netlink.h>
 #include <netlink/route/link.h>
+#include <netlink/route/link/ipgre.h>
 #include <netlink/route/link/veth.h>
 #include <netlink/route/route.h>
 #include <netlink/cli/utils.h>
@@ -34,19 +35,53 @@ int is_tun(char *name)
   return 0;
 }
 
+int is_gre(char *name)
+{
+  printf("is_gre: %s\n", name);
+  return !strcmp(name, "gre");
+}
+
+struct ip {
+  union {
+    uint32_t u32;
+    uint8_t  arr[4];
+  };
+};
+
+struct gre {
+  char *name;
+  char *type;
+  struct ip local;
+  struct ip remote;
+};
+
 // Отслеживание поднятия тунеля
 static void link_cb(struct nl_cache *cache, struct nl_object *obj,
 		      int action, void *data)
 {
-  printf("%s\n", __func__);
+
+  struct rtnl_link *link = (struct rtnl_link *) obj;
+
+  if(link && is_gre(rtnl_link_get_type(link))){
+    struct gre tunnnel = {
+      .type       = rtnl_link_get_type(link),
+      .name       = rtnl_link_get_name (link),
+      .local.u32  = rtnl_link_ipgre_get_local(link),
+      .remote.u32 = rtnl_link_ipgre_get_remote(link),
+    };
+
+    printf("%s: %s type %s local "IPv4_FMT" remote "IPv4_FMT"\n",
+      __func__, tunnnel.name, tunnnel.type, IPv4_ARG(tunnnel.local.arr), IPv4_ARG(tunnnel.remote.arr));
+  }
+
 	nl_object_dump(obj, &dp);
 }
 
 static void neigh_cb(struct nl_cache *cache, struct nl_object *obj,
 		      int action, void *data)
 {
-  printf("%s\n", __func__);
-	nl_object_dump(obj, &dp);
+  // printf("%s\n", __func__);
+	// nl_object_dump(obj, &dp);
 }
 
 // Отслеживание установки ip адреса тунеля
@@ -55,24 +90,24 @@ static void addr_cb(struct nl_cache *cache, struct nl_object *obj,
 {
   // printf("%s\n", __func__);
   struct rtnl_addr *addr = (struct rtnl_addr *) obj;
-  struct rtnl_link *iface = rtnl_addr_get_link(addr);
+  struct rtnl_link *link = rtnl_addr_get_link(addr);
 
-  if(iface && is_tun(rtnl_link_get_name (iface))){
-    struct nl_addr *ipaddr = rtnl_addr_get_local(addr);
+  if(link && is_tun(rtnl_link_get_name (link))){
     if(addr)
       switch (rtnl_addr_get_family(addr))
       {
         case AF_INET: {
+            struct nl_addr *ipaddr = rtnl_addr_get_local(addr);
             uint8_t ip[4];
             memcpy (ip, nl_addr_get_binary_addr(ipaddr), sizeof(ip));
-            printf("%s addr "IPv4_FMT"\n", rtnl_link_get_name(iface), IPv4_ARG(ip));
+            printf("%s addr "IPv4_FMT"\n", rtnl_link_get_name(link), IPv4_ARG(ip));
           }
           break;
         // Не интересно
         // case AF_INET6: {
         //     uint8_t ipv6[16];
         //     memcpy (ipv6, nl_addr_get_binary_addr(ipaddr), sizeof(ipv6));
-        //     printf("%s addrv6 " IPv6_FMT"\n", rtnl_link_get_name(iface), IPv6_ARG(ipv6));
+        //     printf("%s addrv6 " IPv6_FMT"\n", rtnl_link_get_name(link), IPv6_ARG(ipv6));
         //   }
         //   break;
 
@@ -96,8 +131,8 @@ static void route_cb(struct nl_cache *cache, struct nl_object *obj,
     struct rtnl_nexthop *nhop = rtnl_route_nexthop_n(route, i);
 
     if (nhop) {
-      struct rtnl_link *iface = rtnl_link_get(lc, rtnl_route_nh_get_ifindex(nhop));
-      if(iface && is_tun(rtnl_link_get_name(iface)))
+      struct rtnl_link *link = rtnl_link_get(lc, rtnl_route_nh_get_ifindex(nhop));
+      if(link && is_tun(rtnl_link_get_name(link)))
       {
         struct nl_addr *ipaddr = rtnl_route_get_dst(route);
         uint8_t dst_len = nl_addr_get_prefixlen(ipaddr);
@@ -107,14 +142,14 @@ static void route_cb(struct nl_cache *cache, struct nl_object *obj,
             case AF_INET: {
                 uint8_t ip[4];
                 memcpy (ip, nl_addr_get_binary_addr(ipaddr), sizeof(ip));
-                printf("%s route "IPv4_FMT"/%d\n", rtnl_link_get_name(iface), IPv4_ARG(ip),dst_len);
+                printf("%s route "IPv4_FMT"/%d\n", rtnl_link_get_name(link), IPv4_ARG(ip),dst_len);
               }
               break;
             // Не интересно
             // case AF_INET6: {
             //     uint8_t ipv6[16];
             //     memcpy (ipv6, nl_addr_get_binary_addr(ipaddr), sizeof(ipv6));
-            //     printf("%s route " IPv6_FMT"/%d\n", rtnl_link_get_name(iface), IPv6_ARG(ipv6),dst_len);
+            //     printf("%s route " IPv6_FMT"/%d\n", rtnl_link_get_name(link), IPv6_ARG(ipv6),dst_len);
             //   }
             //   break;
 
