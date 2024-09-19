@@ -10,6 +10,9 @@
 
 
 static int quit = 0;
+struct nl_cache_mngr *mngr;
+struct nl_cache *lc, *nc, *ac, *rc;
+struct nl_sock *sock;
 
 static struct nl_dump_params dp = {
 	.dp_type = NL_DUMP_LINE,
@@ -41,18 +44,31 @@ static void addr_cb(struct nl_cache *cache, struct nl_object *obj,
 	nl_object_dump(obj, &dp);
 }
 
+int is_tun(char *name){
+  strstr(name, "gre");
+}
+
 static void route_cb(struct nl_cache *cache, struct nl_object *obj,
 		      int action, void *data)
 {
   printf("%s\n", __func__);
+  struct rtnl_route *route = (struct rtnl_route *) obj;
+
+   int count_nhop = rtnl_route_get_nnexthops (route);
+  for(int i = 0; i <= count_nhop; i++){
+    struct rtnl_nexthop *nhop = rtnl_route_nexthop_n(route, i);
+    if (nhop) {
+        struct rtnl_link *iface = rtnl_link_get(lc, rtnl_route_nh_get_ifindex(nhop));
+        if(iface && is_tun(rtnl_link_get_name (iface)))
+          printf("tun route %s\n", rtnl_link_get_name (iface));
+      }
+  }
+
 	nl_object_dump(obj, &dp);
 }
 
 int main()
 {
-	struct nl_cache_mngr *mngr;
-    struct nl_cache *lc, *nc, *ac, *rc;
-    struct nl_sock *sock;
     dp.dp_fd = stdout;
 
 	signal(SIGINT, sigint);

@@ -1,5 +1,5 @@
 TARGET = main
-LIBS = -lnl-3 -lnl-route-3 -lev -lnl-genl-3 -static
+LIBS = -lnl-3 -lnl-route-3 -lnl-genl-3 -static
 CC = gcc
 CFLAGS = -g -Wall -Wl,--no-as-needed -I /usr/include/libnl3 -I /usr/include/iproute2
 

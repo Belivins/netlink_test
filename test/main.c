@@ -15,40 +15,17 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <err.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <arpa/inet.h>
+
 #include <asm/types.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <netinet/ether.h>
-#include <netinet/in.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 
-#define BUFSIZE 8192
-#define NLMSG_TAIL(nmsg) \
-	((struct rtattr *) (((void *) (nmsg)) + NLMSG_ALIGN((nmsg)->nlmsg_len)))
-
-struct route_info {
-	struct in_addr dst;
-	unsigned short len;
-	struct in_addr src;
-	struct in_addr gw;
-
-	int ifindex;
-	char ifname[IFNAMSIZ];
-};
-
-static int opt_n = 0;
-
+#include "main.h"
 
 static int read_netlink(int sd, char *buf, size_t len, unsigned int seq, unsigned int pid)
 {
@@ -78,25 +55,6 @@ static int read_netlink(int sd, char *buf, size_t len, unsigned int seq, unsigne
 	return msg_len;
 }
 
-static void print_route(struct route_info *ri)
-{
-	char tmp[INET_ADDRSTRLEN + 5];
-	struct in_addr nil = { 0 };
-
-	if (opt_n || memcmp(&ri->dst, &nil, sizeof(nil))) {
-		char prefix[5];
-
-		strcpy(tmp, inet_ntoa(ri->dst));
-		snprintf(prefix, sizeof(prefix), "/%d", ri->len);
-		strcat(tmp, prefix);
-	} else
-		sprintf(tmp, "default");
-	fprintf(stdout, "%-20s ", tmp);
-
-	fprintf(stdout, "%-16s ", inet_ntoa(ri->gw));
-	fprintf(stdout, "%-16s ", ri->ifname);
-	fprintf(stdout, "%-16s\n", inet_ntoa(ri->src));
-}
 
 static int parse_nlmsg(struct nlmsghdr *nlh, struct route_info *ri)
 {
@@ -136,16 +94,14 @@ static int parse_nlmsg(struct nlmsghdr *nlh, struct route_info *ri)
 	return 0;
 }
 
-int addattr_l(struct nlmsghdr *n, int maxlen, int type, const void *data,
+int msg_add_addr(struct nlmsghdr *n, int maxlen, int type, const void *data,
 	      int alen)
 {
 	int len = RTA_LENGTH(alen);
 	struct rtattr *rta;
 
 	if (NLMSG_ALIGN(n->nlmsg_len) + RTA_ALIGN(len) > maxlen) {
-		fprintf(stderr,
-			"addattr_l ERROR: message exceeded bound of %d\n",
-			maxlen);
+		printf("addattr_l ERROR: message exceeded bound of %d\n", maxlen);
 		return -1;
 	}
 	rta = NLMSG_TAIL(n);
@@ -157,66 +113,58 @@ int addattr_l(struct nlmsghdr *n, int maxlen, int type, const void *data,
 	return 0;
 }
 
-int main(int argc, char *argv[])
+int get_route_by_addr(uint8_t *addr, struct route_info *route)
 {
-	static char buf[BUFSIZE] = { 0 };
-	struct nlmsghdr *nlmsg;
-    struct {
+  int sock, len;
+  static char buf[BUFSIZE] = { 0 };
+  struct nlmsghdr *nlmsg = (struct nlmsghdr *)buf;
+
+  if ((sock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE)) < 0)
+		err(0, "netlink socket");
+
+  struct {
 		struct nlmsghdr	n;
-		struct rtmsg	r;
-		char			array[1024];
+		struct rtmsg	  r;
+		char			      array[1024];
 	} req = {
 		.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg)),
 		.n.nlmsg_flags = NLM_F_REQUEST,
 		.n.nlmsg_type = RTM_GETROUTE,
 		.r.rtm_family = AF_INET,
+    .r.rtm_dst_len = sizeof(addr) * 4, //bytelen should be 32
+    .array = {0}
 	};
-	struct route_info ri;
-	int sd, len;
-	int seq = 0;
 
-	if (argc > 1 && !strcmp(argv[1], "-n"))
-		opt_n = 1;
+  msg_add_addr(&req.n, sizeof(req),
+              RTA_DST, addr, sizeof(addr)/2); //byteseq should be 4
 
-	if ((sd = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE)) < 0)
-		err(1, "netlink socket");
+  if (send(sock, &req.n, req.n.nlmsg_len, 0) < 0)
+		err(0, "Failed netlink route request");
 
-	nlmsg = (struct nlmsghdr *)buf;
-
-	req.n.nlmsg_flags = NLM_F_DUMP | NLM_F_REQUEST;
-	req.n.nlmsg_seq = seq++;
-	req.n.nlmsg_pid = getpid();
-
-    // req.r.rtm_family = AF_INET; // AF_INET
-	// req.r.rtm_flags |= RTM_F_LOOKUP_TABLE;
-
-    union {
-        uint8_t arr[4];
-        uint32_t u32;
-    }
-        ip_addr = {
-        .arr = {10,0,0,2}
-    };
-
-    addattr_l(&req.n, sizeof(req),
-                RTA_DST, &ip_addr, 4);
-	req.r.rtm_dst_len = 4;
-
-	printf("n.nlmsg_len %d\n", req.n.nlmsg_len);
-
-	if (send(sd, &req.n, req.n.nlmsg_len, 0) < 0)
-		err(1, "Failed netlink route request");
-
-	len = read_netlink(sd, buf, sizeof(buf), seq, getpid());
+	len = read_netlink(sock, buf, sizeof(buf), 0, getpid());
 	if (len < 0)
-		err(1, "Failed reading netlink response");
+		err(0, "Failed reading netlink response");
 
-	fprintf(stdout, "\e[7m%-20s %-16s %-16s %-16s\e[0m\n", "Destination", "Gateway", "Interface", "Source");
 	for (; NLMSG_OK(nlmsg, len); nlmsg = NLMSG_NEXT(nlmsg, len)) {
-		memset(&ri, 0, sizeof(ri));
-		parse_nlmsg(nlmsg, &ri);
+		parse_nlmsg(nlmsg, route);
+    return 1;
 	}
-	close(sd);
+
+	close(sock);
 
 	return 0;
+}
+
+int main()
+{
+  union {
+      uint8_t arr[4];
+      uint32_t u32;
+  }
+      ip_addr = {
+      .arr = {10,0,0,5}
+  };
+  struct route_info find;
+  get_route_by_addr(ip_addr.arr, &find);
+
 }
